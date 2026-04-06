@@ -27,7 +27,7 @@ RUN docker-php-ext-install \
     zip
 
 # Install swoole (PENTING)
-RUN pecl install swoole \
+RUN pecl install swoole --configureoptions="--enable-brotli=no" \
     && docker-php-ext-enable swoole
 
 # Install composer
