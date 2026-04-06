@@ -181,6 +181,19 @@
                             <span class="md:hidden">Activity</span>
                         </span>
                     </button>
+                    <button
+                        class="tab-button py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors duration-200"
+                        data-tab="status" onclick="switchTab('status')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                                </path>
+                            </svg>
+                            <span class="hidden md:inline">Project Status</span>
+                            <span class="md:hidden">Status</span>
+                        </span>
+                    </button>
                 </nav>
 
                 <!-- Mobile Tab Navigation (Dropdown) -->
@@ -245,6 +258,19 @@
                                                 d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                         </svg>
                                         <span>Recent Activity</span>
+                                    </span>
+                                </button>
+                                <button onclick="switchMobileTab('status')"
+                                    class="mobile-tab-option w-full px-4 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+                                    data-tab="status">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                                            </path>
+                                        </svg>
+                                        <span>Project Status</span>
                                     </span>
                                 </button>
                             </div>
@@ -647,6 +673,106 @@
                     </div>
                 </div>
 
+                <!-- Project Status Tab -->
+                <div id="status-tab" class="tab-content hidden">
+                    <div class="px-4 lg:px-6 py-4 border-b border-gray-200">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Project Status</h3>
+                            <p class="text-sm text-gray-600">Track project progress and performance metrics</p>
+                        </div>
+                    </div>
+                    <div class="p-4 lg:p-6 space-y-6">
+                        @if ($project->start_date && $project->end_date)
+                            {{-- Status Cards --}}
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {{-- Planned Progress --}}
+                                <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                    <div class="flex flex-col h-full justify-between">
+                                        <span class="text-sm font-medium text-gray-500">Planned Progress</span>
+                                        <span
+                                            class="mt-2 text-3xl font-bold text-gray-900">{{ $plannedProgress }}%</span>
+                                    </div>
+                                </div>
+
+                                {{-- Actual Progress --}}
+                                <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                    <div class="flex flex-col h-full justify-between">
+                                        <span class="text-sm font-medium text-gray-500">Actual Progress</span>
+                                        <span
+                                            class="mt-2 text-3xl font-bold text-blue-600">{{ $actualProgress }}%</span>
+                                    </div>
+                                </div>
+
+                                {{-- Deviation --}}
+                                <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                    <div class="flex flex-col h-full justify-between">
+                                        <span class="text-sm font-medium text-gray-500">Deviation</span>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <span
+                                                class="text-3xl font-bold {{ $deviation >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                                                {{ $deviation > 0 ? '+' : '' }}{{ $deviation }}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Project Status --}}
+                                <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                    <div class="flex flex-col h-full justify-between">
+                                        <span class="text-sm font-medium text-gray-500">Project Status</span>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            @php
+                                                $dotClass = match ($projectStatusColor) {
+                                                    'success' => 'bg-green-500',
+                                                    'warning' => 'bg-yellow-500',
+                                                    'danger' => 'bg-red-500',
+                                                    default => 'bg-gray-500',
+                                                };
+                                                $textClass = match ($projectStatusColor) {
+                                                    'success' => 'text-green-600',
+                                                    'warning' => 'text-yellow-600',
+                                                    'danger' => 'text-red-600',
+                                                    default => 'text-gray-600',
+                                                };
+                                            @endphp
+                                            <span
+                                                class="inline-block w-3 h-3 rounded-full {{ $dotClass }}"></span>
+                                            <span
+                                                class="text-lg font-bold {{ $textClass }}">{{ $projectStatus }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- S-Curve Chart --}}
+                            <div class="bg-white border border-gray-200 rounded-lg p-4 lg:p-6 shadow-sm">
+                                <div class="mb-4">
+                                    <h3 class="text-base lg:text-lg font-medium text-gray-900">S-Curve Analysis</h3>
+                                    <p class="text-xs lg:text-sm text-gray-500">Comparison of planned vs actual
+                                        progress over time</p>
+                                </div>
+
+                                <div class="relative h-64 lg:h-96 w-full">
+                                    <canvas id="externalStatusChart"></canvas>
+                                </div>
+                            </div>
+                        @else
+                            <div class="text-center py-12">
+                                <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                                    </path>
+                                </svg>
+                                <div>
+                                    <p class="text-lg font-medium text-gray-900">No Project Dates</p>
+                                    <p class="text-sm text-gray-500">Set project start and end dates to see status
+                                        metrics</p>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
 
             </div>
         </div>
@@ -1181,6 +1307,106 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        // Initialize Project Status Chart
+        (function() {
+            let projectStatusChartInstance = null;
+
+            const initProjectStatusChart = (data) => {
+                const canvas = document.getElementById('externalStatusChart');
+                if (!canvas) return;
+
+                const ctx = canvas.getContext('2d');
+
+                if (projectStatusChartInstance) {
+                    projectStatusChartInstance.destroy();
+                }
+
+                if (!data || !data.labels || data.labels.length === 0) {
+                    return;
+                }
+
+                projectStatusChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': ' + context.parsed.y + '%';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                title: {
+                                    display: true,
+                                    text: 'Progress (%)'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            // Wait for Chart to be defined
+            const waitForChart = (callback) => {
+                if (typeof Chart !== 'undefined') {
+                    callback();
+                } else {
+                    setTimeout(() => waitForChart(callback), 100);
+                }
+            };
+
+            // Initialize on page load if status tab is active or when data is available
+            document.addEventListener('DOMContentLoaded', function() {
+                waitForChart(() => {
+                    const chartData = @js($chartData);
+                    if (chartData && chartData.labels && chartData.labels.length > 0) {
+                        initProjectStatusChart(chartData);
+                    }
+                });
+            });
+
+            // Listen for chart updates from Livewire
+            Livewire.on('project-status-chart-updated', (data) => {
+                waitForChart(() => {
+                    const chartInstance = Chart.getChart("externalStatusChart");
+                    if (chartInstance) {
+                        chartInstance.data = data[0];
+                        chartInstance.update();
+                    } else {
+                        initProjectStatusChart(data[0]);
+                    }
+                });
+            });
+
+            // Reinitialize chart when switching to status tab
+            window.initProjectStatusChartIfNeeded = function() {
+                waitForChart(() => {
+                    const canvas = document.getElementById('externalStatusChart');
+                    if (canvas && canvas.offsetParent !== null) {
+                        const chartData = @js($chartData);
+                        if (chartData && chartData.labels && chartData.labels.length > 0) {
+                            initProjectStatusChart(chartData);
+                        }
+                    }
+                });
+            };
+        })();
+
         // Auto-hide notifications
         document.addEventListener('DOMContentLoaded', function() {
             const successMessage = document.getElementById('success-message');
@@ -1329,7 +1555,9 @@
                 if (tabName === 'status') {
                     console.log('Switching to status tab, initializing chart...');
                     setTimeout(() => {
-                        initializeStatusChart();
+                        if (typeof window.initProjectStatusChartIfNeeded === 'function') {
+                            window.initProjectStatusChartIfNeeded();
+                        }
                     }, 150);
                 }
 
@@ -2105,9 +2333,9 @@
                     scale: "week", // ðŸ“… Use weekly scale instead of daily
                     header: {
                         title: "{{ $project->name ?? 'Project' }} - Gantt Chart Timeline (Weekly View)",
-                        subtitle: `Generated on ${new Date().toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'long', 
+                        subtitle: `Generated on ${new Date().toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
                             day: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
@@ -2195,8 +2423,8 @@
             // Create notification element
             const notification = document.createElement('div');
             notification.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg transition-all duration-300 ${
-                type === 'success' ? 'bg-green-500 text-white' : 
-                type === 'error' ? 'bg-red-500 text-white' : 
+                type === 'success' ? 'bg-green-500 text-white' :
+                type === 'error' ? 'bg-red-500 text-white' :
                 'bg-blue-500 text-white'
             }`;
 

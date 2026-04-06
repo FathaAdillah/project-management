@@ -45,7 +45,13 @@ class ExternalDashboard extends Component
     public $newTicketsThisWeek = 0;
     public $completedThisWeek = 0;
 
-
+    // Project Status properties
+    public string $projectStatus = '-';
+    public string $projectStatusColor = 'gray';
+    public float $plannedProgress = 0;
+    public float $actualProgress = 0;
+    public float $deviation = 0;
+    public array $chartData = [];
 
     // Cache gantt data to prevent re-rendering on pagination
     public $ganttDataCache = null;
@@ -64,6 +70,8 @@ class ExternalDashboard extends Component
             // Refresh all dynamic data
             $this->loadDashboardData();
             $this->loadWidgetData();
+            $this->calculateProjectStatus();
+            $this->generateProjectStatusChart();
 
             // Clear gantt cache to force refresh
             $this->ganttDataCache = null;
@@ -122,6 +130,8 @@ class ExternalDashboard extends Component
         $this->loadStaticData();
         $this->loadDashboardData();
         $this->loadWidgetData();
+        $this->calculateProjectStatus();
+        $this->generateProjectStatusChart();
     }
 
     public function getTicketsProperty()
@@ -475,6 +485,156 @@ class ExternalDashboard extends Component
         } else {
             return 'delay'; // Red - significant delay (more than 10% behind)
         }
+    }
+
+    protected function calculateProjectStatus(): void
+    {
+        if (!$this->project || !$this->project->start_date || !$this->project->end_date) {
+            $this->plannedProgress = 0;
+            $this->actualProgress = $this->project ? $this->project->progress_percentage : 0;
+            $this->deviation = 0;
+            $this->projectStatus = 'Missing Dates';
+            $this->projectStatusColor = 'gray';
+            return;
+        }
+
+        $start = $this->project->start_date;
+        $end = $this->project->end_date;
+        $today = Carbon::today();
+
+        // Calculate Planned Progress (Linear)
+        $totalDuration = $start->diffInDays($end);
+        $elapsed = $start->diffInDays($today);
+
+        if ($today->lt($start)) {
+            $this->plannedProgress = 0;
+        } elseif ($today->gt($end)) {
+            $this->plannedProgress = 100;
+        } else {
+            $this->plannedProgress = $totalDuration > 0 ? round(($elapsed / $totalDuration) * 100, 1) : 100;
+        }
+
+        // Calculate Actual Progress
+        $this->actualProgress = $this->project->progress_percentage;
+
+        // Calculate Deviation
+        $this->deviation = round($this->actualProgress - $this->plannedProgress, 1);
+
+        // Determine Status
+        if ($this->deviation >= -10) {
+            $this->projectStatus = 'On Track';
+            $this->projectStatusColor = 'success';
+        } elseif ($this->deviation >= -20) {
+            $this->projectStatus = 'At Risk';
+            $this->projectStatusColor = 'warning';
+        } else {
+            $this->projectStatus = 'Delayed';
+            $this->projectStatusColor = 'danger';
+        }
+    }
+
+    protected function generateProjectStatusChart(): void
+    {
+        if (!$this->project || !$this->project->start_date || !$this->project->end_date) {
+            $this->chartData = [];
+            return;
+        }
+
+        $start = $this->project->start_date;
+        $end = $this->project->end_date;
+        $today = Carbon::today();
+
+        // If project hasn't started, show empty chart
+        if ($start->gt($today)) {
+            $this->chartData = [];
+            return;
+        }
+
+        $labels = [];
+        $plannedData = [];
+        $actualData = [];
+        $deviationData = [];
+
+        $totalTickets = $this->project->tickets()->count();
+        if ($totalTickets === 0)
+            $totalTickets = 1;
+
+        // Get completion history
+        $completedTicketIds = $this->project->tickets()
+            ->whereHas('status', fn($q) => $q->where('is_completed', true))
+            ->pluck('id');
+
+        $completions = TicketHistory::whereIn('ticket_id', $completedTicketIds)
+            ->whereHas('status', fn($q) => $q->where('is_completed', true))
+            ->selectRaw('DATE(created_at) as date, count(*) as count')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->pluck('count', 'date');
+
+        // Generate daily data points
+        $currentDate = $start->copy();
+        $endDateForChart = $today->gt($end) ? $end : $today;
+
+        $cumulativeCompleted = 0;
+        $totalDuration = $start->diffInDays($end);
+
+        while ($currentDate->lte($endDateForChart)) {
+            $dateStr = $currentDate->format('Y-m-d');
+            $labels[] = $currentDate->format('d M');
+
+            // Planned
+            $elapsed = $start->diffInDays($currentDate);
+            $planned = $totalDuration > 0 ? ($elapsed / $totalDuration) * 100 : 100;
+            if ($planned > 100)
+                $planned = 100;
+            $plannedData[] = round($planned, 1);
+
+            // Actual
+            if (isset($completions[$dateStr])) {
+                $cumulativeCompleted += $completions[$dateStr];
+            }
+
+            $actual = ($cumulativeCompleted / $totalTickets) * 100;
+            $actualData[] = round($actual, 1);
+
+            // Deviation
+            $deviationData[] = round($actual - $planned, 1);
+
+            $currentDate->addDay();
+        }
+
+        $this->chartData = [
+            'labels' => $labels,
+            'datasets' => [
+                [
+                    'label' => 'Actual Progress',
+                    'data' => $actualData,
+                    'borderColor' => '#3b82f6',
+                    'backgroundColor' => 'rgba(59, 130, 246, 0.1)',
+                    'fill' => false,
+                    'tension' => 0.4,
+                ],
+                [
+                    'label' => 'Planned Progress',
+                    'data' => $plannedData,
+                    'borderColor' => '#9ca3af',
+                    'borderDash' => [5, 5],
+                    'fill' => false,
+                    'tension' => 0.4,
+                ],
+                [
+                    'label' => 'Deviation',
+                    'data' => $deviationData,
+                    'borderColor' => '#ef4444',
+                    'hidden' => false,
+                    'fill' => false,
+                    'tension' => 0.4,
+                ],
+            ],
+        ];
+
+        $this->dispatch('project-status-chart-updated', $this->chartData);
     }
 
     public function exportGanttData()
