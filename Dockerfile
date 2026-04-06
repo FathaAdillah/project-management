@@ -1,67 +1,50 @@
 FROM php:8.3-cli-alpine
 
-# Install system dependencies (runtime only)
+# Install dependencies
 RUN apk add --no-cache \
-    libpng \
-    oniguruma \
-    libxml2 \
-    icu-libs \
-    libzip \
-    libcap \
-    curl \
-    bash \
-    freetype \
-    libjpeg-turbo
-
-# Install build dependencies temporarily
-RUN apk add --no-cache --virtual .build-deps \
-    $PHPIZE_DEPS \
     libpng-dev \
     oniguruma-dev \
     libxml2-dev \
     icu-dev \
     libzip-dev \
-    freetype-dev \
-    libjpeg-turbo-dev \
-    linux-headers \
-    openssl-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
+    zip \
+    unzip \
+    git \
+    curl \
+    autoconf \
+    g++ \
+    make
+
+# Install PHP extensions
+RUN docker-php-ext-install \
     pdo_mysql \
     mbstring \
+    exif \
     pcntl \
     bcmath \
     gd \
     intl \
-    zip \
-    sockets \
-    # Install Swoole for Octane \
-    && pecl install swoole \
-    && docker-php-ext-enable swoole \
-    && apk del .build-deps \
-    && rm -rf /tmp/* /var/cache/apk/*
+    zip
+
+# Install swoole (PENTING)
+RUN pecl install swoole \
+    && docker-php-ext-enable swoole
 
 # Install composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /var/www
+COPY . .
 
-# Copy application files
-COPY --chown=www-data:www-data . .
+# Install Laravel dependencies
+RUN composer install --no-dev --optimize-autoloader
 
-# Install composer dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
-# Copy entrypoint script
-COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
-
-# Set permissions
+# Permission
 RUN chmod -R 775 storage bootstrap/cache
 
-# Switch to non-root user
-USER www-data
+# Octane config (biar gak pakai frankenphp)
+ENV OCTANE_SERVER=swoole
 
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["php", "artisan", "octane:start", "--server=swoole", "--host=0.0.0.0", "--port=8000"]
