@@ -19,7 +19,9 @@ RUN apk add --no-cache --virtual .build-deps \
     libxml2-dev \
     icu-dev \
     libzip-dev \
-    # Install PHP extensions \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     pdo_mysql \
     mbstring \
@@ -29,9 +31,7 @@ RUN apk add --no-cache --virtual .build-deps \
     intl \
     zip \
     sockets \
-    # Remove build dependencies \
     && apk del .build-deps \
-    # Clean up \
     && rm -rf /tmp/* /var/cache/apk/*
 
 # Install composer
