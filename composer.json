@@ -62,7 +62,16 @@
         ],
         "octane-dev": [
             "Composer\\Config::disableProcessTimeout",
-            "php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --watch"
+            "php artisan octane:start --server=swoole --host=0.0.0.0 --port=8000 --watch"
+        ],
+        "octane-serve": [
+            "php artisan octane:start --server=swoole --host=0.0.0.0 --port=8000"
+        ],
+        "octane-reload": [
+            "php artisan octane:reload"
+        ],
+        "octane-stop": [
+            "php artisan octane:stop"
         ]
     },
     "extra": {
