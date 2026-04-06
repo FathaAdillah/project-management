@@ -1,10 +1,9 @@
 FROM php:8.3-fpm
 
-# Install dependencies
+# Force IPv4 (fix network issue)
 RUN echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4
 
-RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list
-
+# Install dependencies
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
@@ -14,24 +13,31 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     git \
-    curl
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+    curl \
+    ca-certificates \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
+RUN docker-php-ext-install \
+    pdo_mysql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    intl \
+    zip
 
-# Get latest Composer
+# Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory permissions
 COPY --chown=www-data:www-data . /var/www
 
-# Expose port 9000 for PHP-FPM
+RUN chmod -R 775 storage bootstrap/cache
+
 EXPOSE 9000
 
 CMD ["php-fpm"]
