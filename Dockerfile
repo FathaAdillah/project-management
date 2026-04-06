@@ -9,7 +9,9 @@ RUN apk add --no-cache \
     libzip \
     libcap \
     curl \
-    bash
+    bash \
+    freetype \
+    libjpeg-turbo
 
 # Install build dependencies temporarily
 RUN apk add --no-cache --virtual .build-deps \
@@ -21,6 +23,7 @@ RUN apk add --no-cache --virtual .build-deps \
     libzip-dev \
     freetype-dev \
     libjpeg-turbo-dev \
+    linux-headers \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     pdo_mysql \
