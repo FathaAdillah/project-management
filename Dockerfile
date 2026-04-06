@@ -24,6 +24,7 @@ RUN apk add --no-cache --virtual .build-deps \
     freetype-dev \
     libjpeg-turbo-dev \
     linux-headers \
+    openssl-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     pdo_mysql \
@@ -34,15 +35,14 @@ RUN apk add --no-cache --virtual .build-deps \
     intl \
     zip \
     sockets \
+    # Install Swoole for Octane \
+    && pecl install swoole \
+    && docker-php-ext-enable swoole \
     && apk del .build-deps \
     && rm -rf /tmp/* /var/cache/apk/*
 
 # Install composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Install FrankenPHP for Octane
-COPY --from=dunglas/frankenphp:latest /usr/local/bin/frankenphp /usr/local/bin/frankenphp
-RUN setcap 'cap_net_bind_service=+ep' /usr/local/bin/frankenphp
 
 # Set working directory
 WORKDIR /var/www

@@ -16,6 +16,6 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# Start Octane server
+# Start Octane server with Swoole
 echo "✅ Starting Laravel Octane server on http://0.0.0.0:8000"
-php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000
+php artisan octane:start --server=swoole --host=0.0.0.0 --port=8000
