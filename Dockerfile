@@ -1,9 +1,12 @@
 FROM php:8.3-fpm
 
-# Force IPv4 (fix network issue)
+# Force IPv4
 RUN echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4
 
-# Install dependencies
+# Ganti repository ke mirror stabil
+RUN printf "Types: deb\nURIs: https://ftp.us.debian.org/debian\nSuites: trixie trixie-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n" > /etc/apt/sources.list.d/custom.sources
+
+# Update & install
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
@@ -18,7 +21,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
+# PHP extensions
 RUN docker-php-ext-install \
     pdo_mysql \
     mbstring \
@@ -29,15 +32,12 @@ RUN docker-php-ext-install \
     intl \
     zip
 
-# Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
-
 COPY --chown=www-data:www-data . /var/www
 
 RUN chmod -R 775 storage bootstrap/cache
 
 EXPOSE 9000
-
 CMD ["php-fpm"]
