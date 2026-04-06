@@ -1,27 +1,18 @@
-FROM php:8.3-fpm
+FROM php:8.3-fpm-alpine
 
-# Force IPv4
-RUN echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4
-
-# Ganti repository ke mirror stabil
-RUN printf "Types: deb\nURIs: https://ftp.us.debian.org/debian\nSuites: trixie trixie-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n" > /etc/apt/sources.list.d/custom.sources
-
-# Update & install
-RUN apt-get update && apt-get install -y \
+# Install dependencies
+RUN apk add --no-cache \
     libpng-dev \
-    libonig-dev \
+    oniguruma-dev \
     libxml2-dev \
-    libicu-dev \
+    icu-dev \
     libzip-dev \
     zip \
     unzip \
     git \
-    curl \
-    ca-certificates \
-    gnupg \
-    && rm -rf /var/lib/apt/lists/*
+    curl
 
-# PHP extensions
+# Install PHP extensions
 RUN docker-php-ext-install \
     pdo_mysql \
     mbstring \
@@ -32,10 +23,11 @@ RUN docker-php-ext-install \
     intl \
     zip
 
+# Install composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
-COPY --chown=www-data:www-data . /var/www
+COPY . .
 
 RUN chmod -R 775 storage bootstrap/cache
 
