@@ -1,6 +1,10 @@
 FROM php:8.3-fpm
 
 # Install dependencies
+RUN echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4
+
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list
+
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
