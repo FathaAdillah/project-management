@@ -1,9 +1,36 @@
 # ==============================================
-# Stage 1: Build Frontend Assets with Node.js
+# Stage 1: Build PHP Dependencies First
+# ==============================================
+FROM php:8.3-cli-alpine AS vendor-builder
+
+# Install minimal dependencies for Composer
+RUN apk add --no-cache git unzip
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+# Copy composer files
+COPY composer.json composer.lock ./
+
+# Install PHP dependencies (no scripts needed, just vendor files)
+RUN composer install \
+    --no-dev \
+    --no-scripts \
+    --no-autoloader \
+    --prefer-dist \
+    --ignore-platform-reqs
+
+# ==============================================
+# Stage 2: Build Frontend Assets with Node.js
 # ==============================================
 FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app
+
+# Copy vendor from vendor-builder (needed for Filament theme.css)
+COPY --from=vendor-builder /app/vendor ./vendor
 
 # Copy package files
 COPY package.json package-lock.json* ./
@@ -15,12 +42,13 @@ RUN npm ci --no-audit --prefer-offline
 COPY vite.config.js ./
 COPY resources ./resources
 COPY public ./public
+COPY app ./app
 
 # Build production assets
 RUN npm run build
 
 # ==============================================
-# Stage 2: Build PHP Application
+# Stage 3: Build Full PHP Application
 # ==============================================
 FROM php:8.3-cli-alpine AS php-builder
 
@@ -68,25 +96,8 @@ RUN pecl install swoole \
 # Remove build dependencies
 RUN apk del .build-deps
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-WORKDIR /var/www
-
-# Copy composer files for dependency installation
-COPY composer.json composer.lock ./
-
-# Install PHP dependencies
-RUN composer install \
-    --no-dev \
-    --no-scripts \
-    --no-autoloader \
-    --prefer-dist \
-    --optimize-autoloader \
-    && rm -rf /root/.composer
-
 # ==============================================
-# Stage 3: Final Production Image
+# Stage 4: Final Production Image
 # ==============================================
 FROM php:8.3-cli-alpine
 
@@ -121,8 +132,8 @@ RUN addgroup -g 1000 laravel \
 
 WORKDIR /var/www
 
-# Copy vendor from php-builder
-COPY --from=php-builder --chown=laravel:laravel /var/www/vendor ./vendor
+# Copy vendor from vendor-builder (not from php-builder to avoid redundancy)
+COPY --from=vendor-builder --chown=laravel:laravel /app/vendor ./vendor
 
 # Copy built frontend assets from frontend-builder
 COPY --from=frontend-builder --chown=laravel:laravel /app/public/build ./public/build

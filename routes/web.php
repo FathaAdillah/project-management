@@ -5,6 +5,11 @@ use App\Livewire\ExternalLogin;
 use App\Livewire\ExternalDashboard;
 use App\Http\Controllers\Auth\GoogleController;
 
+// Health check endpoint for Docker
+Route::get('/api/health', function () {
+    return response()->json(['status' => 'ok'], 200);
+});
+
 Route::get('/', function () {
     return view('welcome');
 });
