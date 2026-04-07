@@ -3,16 +3,25 @@ FROM node:20-alpine AS node-builder
 
 WORKDIR /app
 
+# Install PHP and Composer (needed for vendor dependencies)
+RUN apk add --no-cache php82 php82-phar php82-mbstring php82-openssl php82-tokenizer php82-fileinfo php82-json curl git unzip
+RUN curl -sS https://getcomposer.org/installer | php82 -- --install-dir=/usr/local/bin --filename=composer
+
+# Copy composer files and install dependencies first
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist
+
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install npm dependencies
 RUN npm ci
 
 # Copy source files needed for build
 COPY vite.config.js ./
 COPY resources ./resources
 COPY public ./public
+COPY app ./app
 
 # Build assets
 RUN npm run build
