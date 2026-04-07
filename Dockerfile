@@ -1,203 +1,134 @@
-# Multi-stage build for smaller image size
+# ==============================
+# 1. Base PHP Image
+# ==============================
 FROM php:8.3-cli-alpine AS base
 
-# Install runtime dependencies
 RUN apk add --no-cache \
-    libpng \
-    libjpeg-turbo \
-    freetype \
-    oniguruma \
-    libxml2 \
-    icu-libs \
-    libzip \
-    curl \
-    bash \
+    bash curl git unzip \
+    libpng libjpeg-turbo freetype \
+    oniguruma libxml2 icu-libs libzip \
     netcat-openbsd
 
-# Build stage for PHP extensions
+WORKDIR /var/www
+
+# ==============================
+# 2. PHP Extensions Build
+# ==============================
 FROM base AS php-build
 
-# Install build dependencies
 RUN apk add --no-cache --virtual .build-deps \
     $PHPIZE_DEPS \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    oniguruma-dev \
-    libxml2-dev \
-    icu-dev \
-    libzip-dev \
-    linux-headers \
-    openssl-dev
+    libpng-dev libjpeg-turbo-dev freetype-dev \
+    oniguruma-dev libxml2-dev icu-dev libzip-dev \
+    linux-headers openssl-dev
 
-# Configure and install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
-    pdo_mysql \
-    mbstring \
-    pcntl \
-    bcmath \
-    gd \
-    intl \
-    zip \
-    sockets
+        pdo_mysql mbstring pcntl bcmath gd intl zip sockets
 
-# Install Swoole
 RUN pecl install swoole \
-    && docker-php-ext-enable swoole \
-    && pecl clear-cache
+    && docker-php-ext-enable swoole
 
-# Remove build dependencies
-RUN apk del .build-deps \
-    && rm -rf /tmp/* /var/cache/apk/*
+RUN apk del .build-deps && rm -rf /tmp/*
 
-# Composer dependencies stage (with PHP extensions)
-FROM base AS composer-deps
+# ==============================
+# 3. Composer Dependencies
+# ==============================
+FROM base AS composer
 
-# Copy PHP extensions from php-build stage
 COPY --from=php-build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 COPY --from=php-build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
 
-# Install dependencies for composer + runtime libs for PHP extensions
-RUN apk add --no-cache \
-    git \
-    unzip \
-    curl
-
-# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-# Copy composer files and required Laravel files
+# copy only needed files first (cache optimization)
 COPY composer.json composer.lock ./
-COPY artisan ./
-COPY bootstrap ./bootstrap
-COPY config ./config
-COPY database/factories ./database/factories
-COPY database/seeders ./database/seeders
 
-# Create required directories
-RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
-    && mkdir -p bootstrap/cache
+RUN composer install \
+    --no-dev \
+    --optimize-autoloader \
+    --no-interaction \
+    --prefer-dist
 
-# Verify extensions are loaded
-RUN php -m | grep -i intl && php -m | grep -i gd && echo "✓ Extensions loaded"
+# then copy full app
+COPY . .
 
-# Install composer dependencies (now with all required extensions)
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts
+RUN composer dump-autoload --optimize
 
-# Run post-install scripts separately
-RUN composer dump-autoload --optimize || true
+# ==============================
+# 4. Node Build (Vite)
+# ==============================
+FROM node:20-alpine AS node
 
-# Node.js build stage for assets
-FROM node:20-alpine AS node-build
+WORKDIR /app
 
-WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Copy package files
-COPY package*.json ./
-
-# Install npm dependencies
-RUN npm ci --only=production=false
-
-# Copy necessary files for Vite build
-COPY vite.config.js ./
+# IMPORTANT: copy all needed files
 COPY resources ./resources
-COPY app ./app
+COPY public ./public
+COPY vite.config.js ./
+COPY tailwind.config.js* ./
+COPY postcss.config.js* ./
 
-# Copy vendor from composer-deps stage (needed for Filament theme scanning)
-COPY --from=composer-deps /app/vendor ./vendor
+# needed for Filament scanning
+COPY --from=composer /app/vendor ./vendor
 
-# Build assets
 RUN npm run build
 
-# Verify build output
-RUN ls -la public/build/ && echo "✅ Assets built successfully"
+# sanity check (VERY IMPORTANT)
+RUN test -f public/build/manifest.json
 
-# Final production stage
+# ==============================
+# 5. Final Production Image
+# ==============================
 FROM base AS production
 
-# Copy PHP extensions from php-build stage
+# copy PHP extensions
 COPY --from=php-build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 COPY --from=php-build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
 
-# Install Composer
+# copy composer binary
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /var/www
 
-# Copy application files
-COPY --chown=www-data:www-data . .
+# copy app
+COPY --from=composer /app ./
 
-# Copy vendor from composer-deps stage (faster than installing again)
-COPY --from=composer-deps --chown=www-data:www-data /app/vendor ./vendor
+# copy built assets
+COPY --from=node /app/public/build ./public/build
 
-# Copy built assets from node-build stage
-COPY --from=node-build --chown=www-data:www-data /build/public/build ./public/build
+# permissions
+RUN chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
 
-# Set permissions
-RUN chmod -R 775 storage bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache
-
-# Create entrypoint script
+# ==============================
+# Entrypoint
+# ==============================
 RUN echo '#!/bin/sh' > /entrypoint.sh \
-    && echo 'set -e' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo 'echo "🚀 Laravel Octane starting..."' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo '# Wait for database' >> /entrypoint.sh \
-    && echo 'if [ ! -z "$DB_HOST" ]; then' >> /entrypoint.sh \
-    && echo '    echo "⏳ Waiting for database..."' >> /entrypoint.sh \
-    && echo '    timeout 30 sh -c "until nc -z \$DB_HOST \${DB_PORT:-3306} 2>/dev/null; do sleep 1; done" || true' >> /entrypoint.sh \
-    && echo 'fi' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo '# Create storage link if not exists' >> /entrypoint.sh \
-    && echo 'if [ ! -L "public/storage" ]; then' >> /entrypoint.sh \
-    && echo '    echo "🔗 Creating storage link..."' >> /entrypoint.sh \
-    && echo '    php artisan storage:link || true' >> /entrypoint.sh \
-    && echo 'fi' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo '# Run migrations' >> /entrypoint.sh \
-    && echo 'if [ "$RUN_MIGRATIONS" = "true" ]; then' >> /entrypoint.sh \
-    && echo '    echo "📊 Running migrations..."' >> /entrypoint.sh \
-    && echo '    php artisan migrate --force --no-interaction || true' >> /entrypoint.sh \
-    && echo 'fi' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo '# Setup Shield (first time only)' >> /entrypoint.sh \
-    && echo 'if [ "$SETUP_SHIELD" = "true" ]; then' >> /entrypoint.sh \
-    && echo '    echo "🛡️ Setting up Filament Shield..."' >> /entrypoint.sh \
-    && echo '    php artisan shield:install --fresh || true' >> /entrypoint.sh \
-    && echo '    php artisan shield:generate --all --option=policies || true' >> /entrypoint.sh \
-    && echo 'fi' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo '# Cache optimization' >> /entrypoint.sh \
-    && echo 'if [ "$APP_ENV" = "production" ]; then' >> /entrypoint.sh \
-    && echo '    echo "⚡ Optimizing..."' >> /entrypoint.sh \
-    && echo '    php artisan config:cache' >> /entrypoint.sh \
-    && echo '    php artisan route:cache' >> /entrypoint.sh \
-    && echo '    php artisan view:cache' >> /entrypoint.sh \
-    && echo 'else' >> /entrypoint.sh \
-    && echo '    php artisan config:clear' >> /entrypoint.sh \
-    && echo '    php artisan route:clear' >> /entrypoint.sh \
-    && echo '    php artisan view:clear' >> /entrypoint.sh \
-    && echo 'fi' >> /entrypoint.sh \
-    && echo '' >> /entrypoint.sh \
-    && echo 'echo "✅ Starting Octane on http://0.0.0.0:${PORT:-8000}"' >> /entrypoint.sh \
-    && echo 'exec php artisan octane:start --server=swoole --host=0.0.0.0 --port=${PORT:-8000}' >> /entrypoint.sh \
-    && chmod +x /entrypoint.sh
+ && echo 'set -e' >> /entrypoint.sh \
+ && echo 'echo "🚀 Starting Laravel Octane..."' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo 'if [ ! -f "public/build/manifest.json" ]; then' >> /entrypoint.sh \
+ && echo '  echo "❌ Vite manifest missing!"' >> /entrypoint.sh \
+ && echo '  exit 1' >> /entrypoint.sh \
+ && echo 'fi' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo 'php artisan config:cache' >> /entrypoint.sh \
+ && echo 'php artisan route:cache' >> /entrypoint.sh \
+ && echo 'php artisan view:cache' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo 'exec php artisan octane:start --server=swoole --host=0.0.0.0 --port=${PORT:-8000}' >> /entrypoint.sh \
+ && chmod +x /entrypoint.sh
 
-# Switch to non-root user
 USER www-data
 
-# Environment variables
-ENV OCTANE_SERVER=swoole
+ENV APP_ENV=production
 ENV PORT=8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 EXPOSE 8000
 
