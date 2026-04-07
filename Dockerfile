@@ -1,22 +1,22 @@
-FROM php:8.3-fpm
+FROM php:8.3-fpm-alpine
 
 # Install dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     libpng-dev \
-    libonig-dev \
+    oniguruma-dev \
     libxml2-dev \
-    libicu-dev \
+    icu-dev \
     libzip-dev \
     zip \
     unzip \
     git \
-    curl
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+    curl \
+    freetype-dev \
+    libjpeg-turbo-dev
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
