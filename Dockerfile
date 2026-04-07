@@ -1,15 +1,20 @@
-# Build stage for Node.js assets
+# Composer dependencies stage
+FROM composer:2.8 AS composer-builder
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+
+# Install composer dependencies (including Filament)
+RUN composer install --no-dev --no-scripts --no-autoload --no-interaction --prefer-dist
+
+# Node.js build stage
 FROM node:20-alpine AS node-builder
 
 WORKDIR /app
 
-# Install PHP and Composer (needed for vendor dependencies)
-RUN apk add --no-cache php82 php82-phar php82-mbstring php82-openssl php82-tokenizer php82-fileinfo php82-json curl git unzip
-RUN curl -sS https://getcomposer.org/installer | php82 -- --install-dir=/usr/local/bin --filename=composer
-
-# Copy composer files and install dependencies first
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist
+# Copy vendor from composer stage (needed for Filament CSS)
+COPY --from=composer-builder /app/vendor ./vendor
 
 # Copy package files
 COPY package*.json ./
