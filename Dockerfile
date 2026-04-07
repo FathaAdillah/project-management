@@ -54,8 +54,16 @@ RUN apk del .build-deps \
 # Composer dependencies stage
 FROM php:8.3-cli-alpine AS composer-deps
 
-# Install minimal dependencies for composer
-RUN apk add --no-cache git unzip
+# Install build dependencies for PHP extensions
+RUN apk add --no-cache \
+    git \
+    unzip \
+    curl \
+    libzip-dev \
+    && docker-php-ext-install zip
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
