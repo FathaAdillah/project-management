@@ -1,5 +1,5 @@
 # ==============================
-# 1. Base PHP Image
+# 1. Base Image
 # ==============================
 FROM php:8.3-cli-alpine AS base
 
@@ -12,7 +12,7 @@ RUN apk add --no-cache \
 WORKDIR /var/www
 
 # ==============================
-# 2. PHP Extensions Build
+# 2. PHP Extensions
 # ==============================
 FROM base AS php-build
 
@@ -32,7 +32,7 @@ RUN pecl install swoole \
 RUN apk del .build-deps && rm -rf /tmp/*
 
 # ==============================
-# 3. Composer Dependencies
+# 3. Composer Install
 # ==============================
 FROM base AS composer
 
@@ -43,16 +43,17 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-# copy only needed files first (cache optimization)
+# cache layer
 COPY composer.json composer.lock ./
 
 RUN composer install \
     --no-dev \
     --optimize-autoloader \
     --no-interaction \
-    --prefer-dist
+    --prefer-dist \
+    --no-scripts
 
-# then copy full app
+# copy full app
 COPY . .
 
 RUN composer dump-autoload --optimize
@@ -67,31 +68,27 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# IMPORTANT: copy all needed files
 COPY resources ./resources
 COPY public ./public
 COPY vite.config.js ./
 COPY tailwind.config.js* ./
 COPY postcss.config.js* ./
 
-# needed for Filament scanning
+# needed for Filament
 COPY --from=composer /app/vendor ./vendor
 
 RUN npm run build
 
-# sanity check (VERY IMPORTANT)
+# FAIL FAST kalau manifest tidak ada
 RUN test -f public/build/manifest.json
 
 # ==============================
-# 5. Final Production Image
+# 5. Final Image
 # ==============================
 FROM base AS production
 
-# copy PHP extensions
 COPY --from=php-build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 COPY --from=php-build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
-
-# copy composer binary
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
@@ -99,7 +96,7 @@ WORKDIR /var/www
 # copy app
 COPY --from=composer /app ./
 
-# copy built assets
+# copy assets
 COPY --from=node /app/public/build ./public/build
 
 # permissions
@@ -107,20 +104,37 @@ RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
 # ==============================
-# Entrypoint
+# Entrypoint (FIX SEMUA ERROR)
 # ==============================
 RUN echo '#!/bin/sh' > /entrypoint.sh \
  && echo 'set -e' >> /entrypoint.sh \
- && echo 'echo "🚀 Starting Laravel Octane..."' >> /entrypoint.sh \
  && echo '' >> /entrypoint.sh \
+ && echo 'echo "🚀 Starting Laravel..."' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo '# Ensure .env exists' >> /entrypoint.sh \
+ && echo 'if [ ! -f ".env" ]; then cp .env.example .env; fi' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo '# Generate key' >> /entrypoint.sh \
+ && echo 'php artisan key:generate --force || true' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo '# Run package discover (FIX ERROR COMPOSER)' >> /entrypoint.sh \
+ && echo 'php artisan package:discover --ansi || true' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo '# Storage link' >> /entrypoint.sh \
+ && echo 'php artisan storage:link || true' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo '# Cache for production' >> /entrypoint.sh \
+ && echo 'php artisan config:cache' >> /entrypoint.sh \
+ && echo 'php artisan route:cache' >> /entrypoint.sh \
+ && echo 'php artisan view:cache' >> /entrypoint.sh \
+ && echo '' >> /entrypoint.sh \
+ && echo '# Check Vite manifest' >> /entrypoint.sh \
  && echo 'if [ ! -f "public/build/manifest.json" ]; then' >> /entrypoint.sh \
  && echo '  echo "❌ Vite manifest missing!"' >> /entrypoint.sh \
  && echo '  exit 1' >> /entrypoint.sh \
  && echo 'fi' >> /entrypoint.sh \
  && echo '' >> /entrypoint.sh \
- && echo 'php artisan config:cache' >> /entrypoint.sh \
- && echo 'php artisan route:cache' >> /entrypoint.sh \
- && echo 'php artisan view:cache' >> /entrypoint.sh \
+ && echo 'echo "✅ App ready"' >> /entrypoint.sh \
  && echo '' >> /entrypoint.sh \
  && echo 'exec php artisan octane:start --server=swoole --host=0.0.0.0 --port=${PORT:-8000}' >> /entrypoint.sh \
  && chmod +x /entrypoint.sh
@@ -128,6 +142,7 @@ RUN echo '#!/bin/sh' > /entrypoint.sh \
 USER www-data
 
 ENV APP_ENV=production
+ENV APP_DEBUG=false
 ENV PORT=8000
 
 EXPOSE 8000
