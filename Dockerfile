@@ -13,7 +13,7 @@ RUN apk add --no-cache \
     libzip-dev \
     zip unzip git curl
 
-# Install PHP extensions (🔥 penting untuk Filament & Excel)
+# Install PHP extensions (penting untuk Filament & Excel)
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install intl gd mbstring zip
 
@@ -25,11 +25,12 @@ WORKDIR /app
 # Copy composer files
 COPY composer.json composer.lock ./
 
-# Install PHP dependencies
+# 🔥 FIX: disable scripts (biar tidak butuh artisan)
 RUN composer install \
     --no-dev \
     --prefer-dist \
     --no-interaction \
+    --no-scripts \
     --optimize-autoloader
 
 
@@ -40,20 +41,20 @@ FROM node:20-alpine AS node-builder
 
 WORKDIR /app
 
-# Copy vendor dari composer stage (PENTING untuk Filament CSS!)
+# Copy vendor (penting untuk beberapa plugin Filament)
 COPY --from=composer-builder /app/vendor ./vendor
 
 # Install dependencies
 COPY package*.json ./
 RUN npm ci
 
-# Copy needed files for Vite build
+# Copy yang dibutuhkan saja
 COPY vite.config.js ./
 COPY resources ./resources
 COPY public ./public
 COPY app ./app
 
-# Build Vite assets
+# Build assets
 RUN npm run build
 
 
@@ -90,14 +91,22 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
 
-# Copy application source
+# Copy source code
 COPY --chown=www-data:www-data . .
 
 # Copy vendor dari composer stage
 COPY --from=composer-builder /app/vendor ./vendor
 
-# Copy Vite build
+# Copy hasil Vite build
 COPY --from=node-builder /app/public/build ./public/build
+
+# 🔥 Jalankan script Laravel (yang tadi di-skip)
+RUN php artisan package:discover --ansi || true
+
+# (Optional tapi recommended)
+RUN php artisan config:cache || true \
+    && php artisan route:cache || true \
+    && php artisan view:cache || true
 
 # Set permission
 RUN chown -R www-data:www-data storage bootstrap/cache
