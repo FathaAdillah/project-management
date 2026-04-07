@@ -1,4 +1,4 @@
-FROM php:8.3-fpm-alpine
+FROM php:8.3-cli-alpine
 
 # Install dependencies
 RUN apk add --no-cache \
@@ -7,24 +7,30 @@ RUN apk add --no-cache \
     libxml2-dev \
     icu-dev \
     libzip-dev \
-    zip \
-    unzip \
-    git \
-    curl \
-    freetype-dev \
-    libjpeg-turbo-dev
+    zip unzip git curl \
+    freetype-dev libjpeg-turbo-dev \
+    autoconf g++ make
 
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
 
-# Get latest Composer
+# Install Swoole
+RUN pecl install swoole \
+    && docker-php-ext-enable swoole
+
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory permissions
-COPY --chown=www-data:www-data . /var/www
+COPY . .
 
-CMD ["php-fpm"]
+RUN composer install --no-dev --optimize-autoloader
+
+# permission
+RUN chown -R www-data:www-data storage bootstrap/cache
+
+EXPOSE 8000
+
+CMD ["php", "artisan", "octane:start", "--server=swoole", "--host=0.0.0.0", "--port=8000"]
