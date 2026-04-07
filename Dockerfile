@@ -27,7 +27,4 @@ WORKDIR /var/www
 # Copy existing application directory permissions
 COPY --chown=www-data:www-data . /var/www
 
-# Expose port 9000 for PHP-FPM
-EXPOSE 9000
-
 CMD ["php-fpm"]
