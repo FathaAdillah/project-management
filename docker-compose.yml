@@ -1,5 +1,4 @@
 services:
-  # PHP Service
   app:
     build:
       context: .
@@ -13,7 +12,6 @@ services:
     networks:
       - laravel-network
 
-  # Nginx Service
   nginx:
     image: nginx:alpine
     container_name: laravel_nginx
@@ -21,12 +19,12 @@ services:
     ports:
       - "8000:80"
     volumes:
-      - ./:/var/www
       - ./nginx/conf.d/:/etc/nginx/conf.d/
+    depends_on:
+      - app
     networks:
       - laravel-network
 
-  # MySQL Service
   db:
     image: mysql:8.0
     container_name: laravel_db
@@ -36,26 +34,10 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_USER: ${DB_USERNAME}
-      SERVICE_TAGS: dev
-      SERVICE_NAME: mysql
     ports:
       - "${DB_PORT}:3306"
     volumes:
       - laravel-data:/var/lib/mysql
-    networks:
-      - laravel-network
-      
-  # PhpMyAdmin Service
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: laravel_phpmyadmin
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: db
-      PMA_PORT: 3306
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
     networks:
       - laravel-network
 
