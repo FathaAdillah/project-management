@@ -11,10 +11,11 @@ RUN apk add --no-cache \
     icu-libs \
     libzip \
     curl \
-    bash
+    bash \
+    netcat-openbsd
 
-# Build stage
-FROM base AS build
+# Build stage for PHP extensions
+FROM base AS php-build
 
 # Install build dependencies
 RUN apk add --no-cache --virtual .build-deps \
@@ -50,12 +51,29 @@ RUN pecl install swoole \
 RUN apk del .build-deps \
     && rm -rf /tmp/* /var/cache/apk/*
 
-# Final stage
+# Node.js build stage for assets
+FROM node:20-alpine AS node-build
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install npm dependencies
+RUN npm ci --only=production=false
+
+# Copy application files needed for build
+COPY . .
+
+# Build assets
+RUN npm run build
+
+# Final production stage
 FROM base AS production
 
-# Copy PHP extensions from build stage
-COPY --from=build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
-COPY --from=build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+# Copy PHP extensions from php-build stage
+COPY --from=php-build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=php-build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -66,7 +84,10 @@ WORKDIR /var/www
 # Copy application files
 COPY --chown=www-data:www-data . .
 
-# Install dependencies
+# Copy built assets from node-build stage
+COPY --from=node-build --chown=www-data:www-data /app/public/build ./public/build
+
+# Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist \
     && composer clear-cache
 
@@ -86,10 +107,23 @@ RUN echo '#!/bin/sh' > /entrypoint.sh \
     && echo '    timeout 30 sh -c "until nc -z \$DB_HOST \${DB_PORT:-3306} 2>/dev/null; do sleep 1; done" || true' >> /entrypoint.sh \
     && echo 'fi' >> /entrypoint.sh \
     && echo '' >> /entrypoint.sh \
+    && echo '# Create storage link if not exists' >> /entrypoint.sh \
+    && echo 'if [ ! -L "public/storage" ]; then' >> /entrypoint.sh \
+    && echo '    echo "🔗 Creating storage link..."' >> /entrypoint.sh \
+    && echo '    php artisan storage:link || true' >> /entrypoint.sh \
+    && echo 'fi' >> /entrypoint.sh \
+    && echo '' >> /entrypoint.sh \
     && echo '# Run migrations' >> /entrypoint.sh \
     && echo 'if [ "$RUN_MIGRATIONS" = "true" ]; then' >> /entrypoint.sh \
     && echo '    echo "📊 Running migrations..."' >> /entrypoint.sh \
     && echo '    php artisan migrate --force --no-interaction || true' >> /entrypoint.sh \
+    && echo 'fi' >> /entrypoint.sh \
+    && echo '' >> /entrypoint.sh \
+    && echo '# Setup Shield (first time only)' >> /entrypoint.sh \
+    && echo 'if [ "$SETUP_SHIELD" = "true" ]; then' >> /entrypoint.sh \
+    && echo '    echo "🛡️ Setting up Filament Shield..."' >> /entrypoint.sh \
+    && echo '    php artisan shield:install --fresh || true' >> /entrypoint.sh \
+    && echo '    php artisan shield:generate --all --option=policies || true' >> /entrypoint.sh \
     && echo 'fi' >> /entrypoint.sh \
     && echo '' >> /entrypoint.sh \
     && echo '# Cache optimization' >> /entrypoint.sh \
@@ -98,6 +132,10 @@ RUN echo '#!/bin/sh' > /entrypoint.sh \
     && echo '    php artisan config:cache' >> /entrypoint.sh \
     && echo '    php artisan route:cache' >> /entrypoint.sh \
     && echo '    php artisan view:cache' >> /entrypoint.sh \
+    && echo 'else' >> /entrypoint.sh \
+    && echo '    php artisan config:clear' >> /entrypoint.sh \
+    && echo '    php artisan route:clear' >> /entrypoint.sh \
+    && echo '    php artisan view:clear' >> /entrypoint.sh \
     && echo 'fi' >> /entrypoint.sh \
     && echo '' >> /entrypoint.sh \
     && echo 'echo "✅ Starting Octane on http://0.0.0.0:${PORT:-8000}"' >> /entrypoint.sh \
@@ -110,6 +148,10 @@ USER www-data
 # Environment variables
 ENV OCTANE_SERVER=swoole
 ENV PORT=8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 EXPOSE 8000
 
