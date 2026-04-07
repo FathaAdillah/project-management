@@ -51,10 +51,21 @@ RUN pecl install swoole \
 RUN apk del .build-deps \
     && rm -rf /tmp/* /var/cache/apk/*
 
+# Composer dependencies stage
+FROM composer:latest AS composer-deps
+
+WORKDIR /app
+
+# Copy composer files
+COPY composer.json composer.lock ./
+
+# Install composer dependencies (including vendor/filament)
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
 # Node.js build stage for assets
 FROM node:20-alpine AS node-build
 
-WORKDIR /app
+WORKDIR /build
 
 # Copy package files
 COPY package*.json ./
@@ -62,11 +73,19 @@ COPY package*.json ./
 # Install npm dependencies
 RUN npm ci --only=production=false
 
-# Copy application files needed for build
-COPY . .
+# Copy necessary files for Vite build
+COPY vite.config.js ./
+COPY resources ./resources
+COPY app ./app
+
+# Copy vendor from composer-deps stage (needed for Filament theme scanning)
+COPY --from=composer-deps /app/vendor ./vendor
 
 # Build assets
 RUN npm run build
+
+# Verify build output
+RUN ls -la public/build/ && echo "✅ Assets built successfully"
 
 # Final production stage
 FROM base AS production
@@ -84,12 +103,11 @@ WORKDIR /var/www
 # Copy application files
 COPY --chown=www-data:www-data . .
 
-# Copy built assets from node-build stage
-COPY --from=node-build --chown=www-data:www-data /app/public/build ./public/build
+# Copy vendor from composer-deps stage (faster than installing again)
+COPY --from=composer-deps --chown=www-data:www-data /app/vendor ./vendor
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist \
-    && composer clear-cache
+# Copy built assets from node-build stage
+COPY --from=node-build --chown=www-data:www-data /build/public/build ./public/build
 
 # Set permissions
 RUN chmod -R 775 storage bootstrap/cache \
