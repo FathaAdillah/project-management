@@ -51,16 +51,18 @@ RUN pecl install swoole \
 RUN apk del .build-deps \
     && rm -rf /tmp/* /var/cache/apk/*
 
-# Composer dependencies stage
-FROM php:8.3-cli-alpine AS composer-deps
+# Composer dependencies stage (with PHP extensions)
+FROM base AS composer-deps
 
-# Install build dependencies for PHP extensions
+# Copy PHP extensions from php-build stage
+COPY --from=php-build /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=php-build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+
+# Install dependencies for composer + runtime libs for PHP extensions
 RUN apk add --no-cache \
     git \
     unzip \
-    curl \
-    libzip-dev \
-    && docker-php-ext-install zip
+    curl
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -79,10 +81,13 @@ COPY database/seeders ./database/seeders
 RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
     && mkdir -p bootstrap/cache
 
-# Install composer dependencies
+# Verify extensions are loaded
+RUN php -m | grep -i intl && php -m | grep -i gd && echo "✓ Extensions loaded"
+
+# Install composer dependencies (now with all required extensions)
 RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts
 
-# Run post-install scripts separately (some might fail, that's ok)
+# Run post-install scripts separately
 RUN composer dump-autoload --optimize || true
 
 # Node.js build stage for assets
