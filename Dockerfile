@@ -52,15 +52,30 @@ RUN apk del .build-deps \
     && rm -rf /tmp/* /var/cache/apk/*
 
 # Composer dependencies stage
-FROM composer:latest AS composer-deps
+FROM php:8.3-cli-alpine AS composer-deps
+
+# Install minimal dependencies for composer
+RUN apk add --no-cache git unzip
 
 WORKDIR /app
 
-# Copy composer files
+# Copy composer files and required Laravel files
 COPY composer.json composer.lock ./
+COPY artisan ./
+COPY bootstrap ./bootstrap
+COPY config ./config
+COPY database/factories ./database/factories
+COPY database/seeders ./database/seeders
 
-# Install composer dependencies (including vendor/filament)
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+# Create required directories
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
+    && mkdir -p bootstrap/cache
+
+# Install composer dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts
+
+# Run post-install scripts separately (some might fail, that's ok)
+RUN composer dump-autoload --optimize || true
 
 # Node.js build stage for assets
 FROM node:20-alpine AS node-build
