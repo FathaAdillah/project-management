@@ -15,10 +15,14 @@ RUN apk add --no-cache \
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
 
-# Install Swoole
+RUN apk add --no-cache \
+    openssl-dev \
+    pkgconfig \
+    linux-headers
+
+# Install swoole
 RUN pecl install swoole \
     && docker-php-ext-enable swoole
-
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
