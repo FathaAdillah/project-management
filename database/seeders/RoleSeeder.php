@@ -6,11 +6,20 @@ use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
 
 class RoleSeeder extends Seeder
 {
     public function run()
     {
+        // Generate Shield permissions untuk Resources, Pages, dan Widgets
+        $this->command->info('🛡️ Generating Shield permissions...');
+        Artisan::call('shield:generate', [
+            '--all' => true,
+            '--option' => '1', // Generate for all
+        ]);
+        $this->command->info('✅ Shield permissions generated');
+
         // Daftar resource Filament
         $resources = [
             'project',
@@ -49,13 +58,19 @@ class RoleSeeder extends Seeder
         $admin->syncPermissions($adminPermissions);
 
         // member: hanya view/view_any project, ticket, ticket_priority, ticket_comment, notification, dan update ticket (untuk drag & drop)
-        $memberPermissions = Permission::where(function($q) {
+        $memberPermissions = Permission::where(function ($q) {
             $q->whereIn('name', [
-                'view_project', 'view_any_project',
-                'view_ticket', 'view_any_ticket', 'update_ticket',
-                'view_ticket_priority', 'view_any_ticket_priority',
-                'view_ticket_comment', 'view_any_ticket_comment',
-                'view_notification', 'view_any_notification',
+                'view_project',
+                'view_any_project',
+                'view_ticket',
+                'view_any_ticket',
+                'update_ticket',
+                'view_ticket_priority',
+                'view_any_ticket_priority',
+                'view_ticket_comment',
+                'view_any_ticket_comment',
+                'view_notification',
+                'view_any_notification',
             ]);
         })->get();
         $member->syncPermissions($memberPermissions);
