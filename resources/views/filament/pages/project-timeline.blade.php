@@ -66,6 +66,7 @@
 
     @push('styles')
         <link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css" type="text/css">
+        <link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/ext/dhtmlxgantt_marker.css" type="text/css">
         <style>
             .gantt_task_line.overdue {
                 background-color: #ef4444 !important;
@@ -195,6 +196,7 @@
 
     @push('scripts')
         <script src="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.js"></script>
+        <script src="https://cdn.dhtmlx.com/gantt/edge/ext/dhtmlxgantt_marker.js"></script>
         <script>
             let ganttPageInitialized = false;
             let ganttData = @json($ganttData ?? ['data' => [], 'links' => []]);
@@ -242,9 +244,11 @@
                     }
 
                     // ✨ Enable marker plugin for today line
-                    gantt.plugins({
-                        marker: true
-                    });
+                    if (typeof gantt.plugins === 'function') {
+                        gantt.plugins({
+                            marker: true
+                        });
+                    }
 
                     gantt.config.date_format = "%d-%m-%Y %H:%i";
 
@@ -315,15 +319,24 @@
                     gantt.parse(ganttData);
 
                     // ✨ Add today marker line
-                    const today = new Date();
-                    gantt.addMarker({
-                        start_date: today,
-                        css: "today",
-                        text: "Today"
-                    });
+                    if (typeof gantt.addMarker === 'function') {
+                        try {
+                            const today = new Date();
+                            gantt.addMarker({
+                                start_date: today,
+                                css: "today",
+                                text: "Today"
+                            });
+                            console.log('Today marker added successfully');
+                        } catch (markerError) {
+                            console.warn('Could not add marker line:', markerError);
+                        }
+                    } else {
+                        console.warn('gantt.addMarker is not available in this version');
+                    }
 
                     console.log('Page dhtmlxGantt initialized successfully with', ganttData.data.length,
-                        'projects and today marker');
+                        'projects');
 
                 } catch (error) {
                     console.error('Error initializing Page dhtmlxGantt:', error);
