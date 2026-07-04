@@ -286,122 +286,199 @@
             </div>
 
             <div class="bg-white dark:bg-gray-800 rounded-lg p-4">
-                <canvas id="sCurveChart" height="100"></canvas>
+                <canvas id="sCurveChart" height="100" wire:key="chart-{{ $selectedProject?->id }}"></canvas>
             </div>
         </x-filament::section>
 
-        {{-- Chart.js Script --}}
-        @script
+        @push('scripts')
         <script>
-            let chart = null;
+            let sCurveChart = null;
+            let chartInitialized = false;
 
-            const initChart = () => {
-                const ctx = document.getElementById('sCurveChart');
-                if (!ctx) {
-                    console.log('Canvas element not found');
-                    return;
-                }
+            window.initSCurveChart = function(chartData) {
+                try {
+                    // Wait for Chart.js to be available
+                    if (typeof Chart === 'undefined') {
+                        console.error('Chart.js library not loaded');
+                        setTimeout(() => window.initSCurveChart(chartData), 200);
+                        return;
+                    }
 
-                // Check if Chart.js is loaded
-                if (typeof Chart === 'undefined') {
-                    console.error('Chart.js is not loaded');
-                    return;
-                }
+                    const ctx = document.getElementById('sCurveChart');
+                    if (!ctx) {
+                        console.error('Canvas element #sCurveChart not found');
+                        return;
+                    }
 
-                const chartData = @json($this->chartData);
+                    // Validate chart data
+                    if (!chartData || !chartData.labels || !chartData.datasets) {
+                        console.warn('Invalid chart data structure:', chartData);
+                        ctx.getContext('2d').fillStyle = '#ccc';
+                        ctx.getContext('2d').fillRect(0, 0, ctx.width, ctx.height);
+                        return;
+                    }
 
-                console.log('Chart data:', chartData);
+                    // Check if data is empty
+                    if (chartData.labels.length === 0 || chartData.datasets.length === 0) {
+                        console.warn('Chart data is empty');
+                        const canvasCtx = ctx.getContext('2d');
+                        canvasCtx.fillStyle = '#e5e7eb';
+                        canvasCtx.font = '14px sans-serif';
+                        canvasCtx.textAlign = 'center';
+                        canvasCtx.textBaseline = 'middle';
+                        canvasCtx.fillText('No data available for this project', ctx.width / 2, ctx.height / 2);
+                        return;
+                    }
 
-                if (chart) {
-                    chart.destroy();
-                }
+                    console.log('Initializing S-Curve chart with data:', chartData);
 
-                chart = new Chart(ctx, {
-                    type: 'line',
-                    data: chartData,
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'bottom',
+                    // Destroy existing chart
+                    if (sCurveChart) {
+                        try {
+                            sCurveChart.destroy();
+                        } catch (e) {
+                            console.warn('Error destroying previous chart:', e);
+                        }
+                    }
+
+                    // Create new chart
+                    sCurveChart = new Chart(ctx, {
+                        type: 'line',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
                             },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                title: {
+                            plugins: {
+                                legend: {
                                     display: true,
-                                    text: 'Progress (%)'
-                                },
-                                ticks: {
-                                    callback: function(value) {
-                                        return value + '%';
-                                    }
-                                },
-                                grid: {
-                                    color: function(context) {
-                                        if (context.tick.value === 0) {
-                                            return 'rgba(0, 0, 0, 0.3)';
+                                    position: 'bottom',
+                                    labels: {
+                                        usePointStyle: true,
+                                        padding: 15,
+                                        font: {
+                                            size: 12
                                         }
-                                        return 'rgba(0, 0, 0, 0.1)';
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    titleFont: { size: 13 },
+                                    bodyFont: { size: 12 },
+                                    padding: 10,
+                                    displayColors: true,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + parseFloat(context.parsed.y).toFixed(2) + '%';
+                                        }
                                     }
                                 }
                             },
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Timeline'
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    title: {
+                                        display: true,
+                                        text: 'Progress (%)'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value + '%';
+                                        }
+                                    },
+                                    grid: {
+                                        drawBorder: false,
+                                        color: function(context) {
+                                            if (context.tick.value === 0 || context.tick.value === 100) {
+                                                return 'rgba(0, 0, 0, 0.2)';
+                                            }
+                                            return 'rgba(0, 0, 0, 0.05)';
+                                        }
+                                    }
                                 },
-                                ticks: {
-                                    maxRotation: 45,
-                                    minRotation: 45
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Timeline'
+                                    },
+                                    grid: {
+                                        drawBorder: false,
+                                        display: false
+                                    },
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 0
+                                    }
                                 }
                             }
                         }
-                    }
-                });
+                    });
 
-                console.log('Chart initialized successfully');
-            };
+                    chartInitialized = true;
+                    console.log('S-Curve chart initialized successfully');
 
-            // Wait for Chart.js to load
-            const waitForChartJS = () => {
-                if (typeof Chart !== 'undefined') {
-                    initChart();
-                } else {
-                    setTimeout(waitForChartJS, 100);
+                } catch (error) {
+                    console.error('Error initializing S-Curve chart:', error);
+                    console.error('Chart data was:', chartData);
                 }
             };
 
-            // Initialize chart on page load
-            document.addEventListener('DOMContentLoaded', waitForChartJS);
+            // Wait for Chart.js to load
+            const waitForChartJS = (maxAttempts = 20) => {
+                if (typeof Chart !== 'undefined') {
+                    console.log('Chart.js loaded, ready to initialize');
+                    // Chart.js is loaded, data will be passed via Livewire
+                } else if (maxAttempts > 0) {
+                    setTimeout(() => waitForChartJS(maxAttempts - 1), 100);
+                } else {
+                    console.error('Chart.js failed to load after timeout');
+                }
+            };
 
-            // Also try immediate init
-            setTimeout(waitForChartJS, 100);
+            // Initialize Chart.js loading check
+            waitForChartJS();
+        </script>
+        @endpush
 
-            // Reinitialize chart when Livewire updates
-            Livewire.hook('morph.updated', () => {
-                setTimeout(initChart, 200);
+        @script
+        <script>
+            // This will be called when Livewire updates with new chart data
+            document.addEventListener('livewire:updated', () => {
+                // Get chart data from the component
+                const chartDataElement = document.querySelector('[data-chart-data]');
+                if (chartDataElement && window.initSCurveChart) {
+                    try {
+                        const chartData = JSON.parse(chartDataElement.getAttribute('data-chart-data'));
+                        console.log('Chart data received from Livewire:', chartData);
+                        window.initSCurveChart(chartData);
+                    } catch (e) {
+                        console.error('Error parsing chart data:', e);
+                    }
+                }
             });
 
-            // Alternative hook for Livewire 3
-            document.addEventListener('livewire:navigated', () => {
-                setTimeout(initChart, 200);
+            // Initialize on first load
+            document.addEventListener('DOMContentLoaded', () => {
+                const chartDataElement = document.querySelector('[data-chart-data]');
+                if (chartDataElement && window.initSCurveChart) {
+                    try {
+                        const chartData = JSON.parse(chartDataElement.getAttribute('data-chart-data'));
+                        console.log('Initial chart data:', chartData);
+                        window.initSCurveChart(chartData);
+                    } catch (e) {
+                        console.error('Error parsing initial chart data:', e);
+                    }
+                }
             });
         </script>
         @endscript
+
+        {{-- Hidden data element to pass chart data to JavaScript --}}
+        <div data-chart-data="{{ json_encode($this->chartData ?? []) }}" style="display: none;"></div>
     @endif
 
 </x-filament-panels::page>
