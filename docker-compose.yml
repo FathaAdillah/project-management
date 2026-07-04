@@ -12,14 +12,21 @@ services:
       - ./:/var/www
       - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
 
-    networks:
-      - laravel-network
+    stop_grace_period: 30s
 
     deploy:
+      update_config:
+        parallelism: 1
+        order: stop-first
+
       restart_policy:
         condition: on-failure
         delay: 10s
         max_attempts: 3
+        window: 60s
+
+    networks:
+      - laravel-network
 
   nginx:
     image: nginx:alpine
@@ -28,19 +35,22 @@ services:
       - "8000:80"
 
     volumes:
-      - ./nginx/conf.d/:/etc/nginx/conf.d/
+      - ./nginx/conf.d:/etc/nginx/conf.d
 
     depends_on:
       - app
 
-    networks:
-      - laravel-network
+    stop_grace_period: 30s
 
     deploy:
       restart_policy:
         condition: on-failure
         delay: 10s
         max_attempts: 3
+        window: 60s
+
+    networks:
+      - laravel-network
 
   db:
     image: mysql:8.0
@@ -51,22 +61,18 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_USER: ${DB_USERNAME}
 
-    ports:
-      - "${DB_PORT}:3306"
-
     volumes:
       - laravel-data:/var/lib/mysql
+
+    deploy:
+      restart_policy:
+        condition: any
 
     networks:
       - laravel-network
 
-    deploy:
-      restart_policy:
-        condition: unless-stopped
-
 networks:
   laravel-network:
-    driver: bridge
 
 volumes:
   laravel-data:
