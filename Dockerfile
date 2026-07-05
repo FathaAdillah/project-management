@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
 
+RUN npm install
+RUN npm run build
+
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -25,11 +28,21 @@ RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
+
 WORKDIR /var/www
 
-# Copy existing application directory permissions
-COPY --chown=www-data:www-data . /var/www
+COPY composer.json composer.lock ./
+
+RUN composer install \
+    --no-dev \
+    --optimize-autoloader \
+    --no-interaction
+
+COPY . .
+
+RUN composer dump-autoload --optimize
+
+RUN chown -R www-data:www-data /var/www
 
 # Expose port 9000 for PHP-FPM
 EXPOSE 9000
