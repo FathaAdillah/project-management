@@ -1,89 +1,68 @@
-version: "3.8"
-
 services:
+  # PHP Service
   app:
     build:
       context: .
       dockerfile: Dockerfile
-
+    container_name: laravel_app
     restart: unless-stopped
     working_dir: /var/www
-
-    expose:
-      - "9000"
-
     volumes:
+      - ./:/var/www
       - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
-      # Hapus mount source code saat production
-      # - ./:/var/www
-
-    healthcheck:
-      test: ["CMD-SHELL", "php artisan --version || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-
-    stop_grace_period: 30s
-
-    depends_on:
-      db:
-        condition: service_healthy
-
     networks:
       - laravel-network
 
+  # Nginx Service
   nginx:
     image: nginx:alpine
-
+    container_name: laravel_nginx
     restart: unless-stopped
-
     ports:
       - "8000:80"
-
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-
-    depends_on:
-      app:
-        condition: service_healthy
-
-    stop_grace_period: 30s
-
+      - ./:/var/www
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
     networks:
       - laravel-network
 
+  # MySQL Service
   db:
     image: mysql:8.0
-
+    container_name: laravel_db
     restart: unless-stopped
-
     environment:
       MYSQL_DATABASE: ${DB_DATABASE}
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_USER: ${DB_USERNAME}
       MYSQL_PASSWORD: ${DB_PASSWORD}
-
-    command:
-      - --default-authentication-plugin=mysql_native_password
-
+      MYSQL_USER: ${DB_USERNAME}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    ports:
+      - "${DB_PORT}:3306"
     volumes:
       - laravel-data:/var/lib/mysql
+    networks:
+      - laravel-network
 
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-    stop_grace_period: 30s
-
+  # PhpMyAdmin Service
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: laravel_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
     networks:
       - laravel-network
 
 networks:
   laravel-network:
+    driver: bridge
 
 volumes:
   laravel-data:
+    driver: local
