@@ -6,24 +6,29 @@ services:
       context: .
       dockerfile: Dockerfile
 
+    restart: unless-stopped
     working_dir: /var/www
 
+    expose:
+      - "9000"
+
     volumes:
-      - ./:/var/www
       - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
+      # Hapus mount source code saat production
+      # - ./:/var/www
+
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan --version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
     stop_grace_period: 30s
 
-    deploy:
-      update_config:
-        parallelism: 1
-        order: stop-first
-
-      restart_policy:
-        condition: on-failure
-        delay: 10s
-        max_attempts: 3
-        window: 60s
+    depends_on:
+      db:
+        condition: service_healthy
 
     networks:
       - laravel-network
@@ -31,23 +36,19 @@ services:
   nginx:
     image: nginx:alpine
 
+    restart: unless-stopped
+
     ports:
       - "8000:80"
 
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
 
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
     stop_grace_period: 30s
-
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 10s
-        max_attempts: 3
-        window: 60s
 
     networks:
       - laravel-network
@@ -55,18 +56,28 @@ services:
   db:
     image: mysql:8.0
 
+    restart: unless-stopped
+
     environment:
       MYSQL_DATABASE: ${DB_DATABASE}
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+
+    command:
+      - --default-authentication-plugin=mysql_native_password
 
     volumes:
       - laravel-data:/var/lib/mysql
 
-    deploy:
-      restart_policy:
-        condition: any
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    stop_grace_period: 30s
 
     networks:
       - laravel-network
