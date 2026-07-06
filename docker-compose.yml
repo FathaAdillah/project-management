@@ -13,17 +13,16 @@ services:
       - laravel-network
 
   nginx:
-    build:
-      context: .
-      dockerfile: Dockerfile.nginx
-    restart: unless-stopped
+    ports:
+      - "8001:80"
+    image: nginx:alpine # Pakai image standar, tidak perlu Dockerfile.nginx lagi
+    volumes:
+      - .:/var/www # Nginx mengintip folder yang sama dengan App
+      - ./nginx/conf.d/app.conf:/etc/nginx/conf.d/default.conf # Pasang config
     depends_on:
       - app
-    # Port 8000 bisa dihapus jika pakai domain Dokploy
     networks:
       - laravel-network
-    volumes:
-      - .:/var/www # Nginx butuh akses folder public
 
   db:
     image: mysql:8.0
