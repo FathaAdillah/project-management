@@ -1,7 +1,8 @@
 FROM nginx:alpine
-# 1. Copy config
+
+# Copy config Anda ke lokasi default agar aktif
 COPY nginx/conf.d/app.conf /etc/nginx/conf.d/default.conf
-# 2. Set folder kerja
+
+# WAJIB: Folder public harus ada di sini agar sesuai dengan 'root /var/www/public'
 WORKDIR /var/www
-# 3. Copy folder public (Wajib ada agar Nginx tidak error realpath)
 COPY public /var/www/public
